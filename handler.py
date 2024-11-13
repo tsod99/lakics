@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from flask import Flask, request, jsonify
 from queue import Queue
 from threading import Thread
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -17,7 +17,6 @@ EMAIL_ACCOUNT = "gomonitor234@gmail.com"
 EMAIL_PASSWORD = "thdf cflj vhko spby"
 CHECK_INTERVAL = 15
 email_queue = Queue()
-request_time = datetime.now(timezone.utc)
 
 def login_to_email():
     try:
@@ -105,12 +104,14 @@ def process_email_requests():
     while True:
         if not email_queue.empty():
             request_data = email_queue.get()
-            user_email, request_time = request_data["email"], request_data["timestamp"]
+            user_email = request_data["email"]
+            request_time = request_data["timestamp"]  # Ensure this is timezone-aware
             print(f"Processing email request for {user_email}...")
 
             raw_email, email_timestamp = fetch_latest_email(mail)
             if raw_email and email_timestamp:
-                # Check if the email timestamp matches the request timestamp within a 20-second window
+                # Ensure both timestamps are aware and in UTC
+                email_timestamp = email_timestamp.astimezone(timezone.utc)
                 if abs((email_timestamp - request_time).total_seconds()) <= 20:
                     download_link = extract_download_link(raw_email)
                     if download_link:
@@ -133,8 +134,8 @@ def save_user_email():
         print(f"Extracted email: {user_email}")
         
         if user_email:
-            # Add the email and the current timestamp to the queue
-            email_queue.put({"email": user_email, "timestamp": datetime.now()})
+            # Add the email and the current timestamp (timezone-aware) to the queue
+            email_queue.put({"email": user_email, "timestamp": datetime.now(timezone.utc)})
             return jsonify({"message": "User email saved successfully"}), 200
         else:
             print("No email provided in the request body.")
