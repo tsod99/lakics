@@ -27,28 +27,25 @@ def login_to_email():
         print(f"Failed to log in: {e}")
         return None
 
-def fetch_latest_email(mail):
+def fetch_latest_email(mail, max_retries=3, delay_between_retries=5):
     mail.select("inbox")
-    result, data = mail.search(None, "UNSEEN")
-    if result != "OK":
-        print("Failed to fetch emails.")
-        return None, None
-
-    email_ids = data[0].split()
-    if not email_ids:
-        print("No new emails.")
-        return None, None
-
-    latest_email_id = email_ids[-1]
-    result, message_data = mail.fetch(latest_email_id, "(RFC822)")
-    if result != "OK":
-        print("Failed to fetch the latest email.")
-        return None, None
-
-    msg = email.message_from_bytes(message_data[0][1])
-    email_timestamp = email.utils.parsedate_to_datetime(msg['Date'])
-    
-    return msg, email_timestamp
+    retries = 0
+    while retries < max_retries:
+        result, data = mail.search(None, "UNSEEN")
+        if result == "OK" and data[0]:
+            email_ids = data[0].split()
+            latest_email_id = email_ids[-1]
+            result, message_data = mail.fetch(latest_email_id, "(RFC822)")
+            if result == "OK":
+                msg = email.message_from_bytes(message_data[0][1])
+                email_timestamp = email.utils.parsedate_to_datetime(msg['Date'])
+                return msg, email_timestamp
+        else:
+            print(f"No new emails yet. Retry {retries + 1} of {max_retries}")
+            retries += 1
+            time.sleep(delay_between_retries)
+    print("Failed to find a matching email after retries.")
+    return None, None
 
 def extract_download_link(raw_email):
     if raw_email.is_multipart():
@@ -58,7 +55,7 @@ def extract_download_link(raw_email):
                 soup = BeautifulSoup(html_content, "lxml")
                 download_button = soup.find("a", string="Download Export")
                 if not download_button:
-                    download_button = soup.find("a", href=True, text=lambda t: t and "download" in t.lower())
+                    download_button = soup.find("a", href=True, string=lambda t: t and "download" in t.lower())
                 if download_button:
                     return download_button.get("href")
     print("No valid download link found.")
