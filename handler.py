@@ -47,6 +47,7 @@ def fetch_latest_email(mail, max_retries=3, delay_between_retries=5):
     print("Failed to find a matching email after retries.")
     return None, None
 
+
 def extract_download_link(raw_email):
     if raw_email.is_multipart():
         for part in raw_email.walk():
@@ -101,22 +102,20 @@ def process_email_requests():
     while True:
         if not email_queue.empty():
             request_data = email_queue.get()
-            user_email = request_data["email"]
-            request_time = request_data["timestamp"]  # Ensure this is timezone-aware
+            user_email, request_time = request_data["email"], request_data["timestamp"]
             print(f"Processing email request for {user_email}...")
 
             raw_email, email_timestamp = fetch_latest_email(mail)
             if raw_email and email_timestamp:
-                # Ensure both timestamps are aware and in UTC
-                email_timestamp = email_timestamp.astimezone(timezone.utc)
-                if abs((email_timestamp - request_time).total_seconds()) <= 20:
+                # Allow for a wider window for the timestamp comparison
+                if abs((email_timestamp - request_time).total_seconds()) <= 30:  # Increase window to 30 seconds
                     download_link = extract_download_link(raw_email)
                     if download_link:
                         send_link_to_email(download_link, user_email)
                     else:
                         print("No download link found in the latest email.")
                 else:
-                    print("No email match found within the time window.")
+                    print(f"Email arrived too late. Time window exceeded: {abs((email_timestamp - request_time).total_seconds())} seconds.")
             else:
                 print("No new emails found.")
         time.sleep(CHECK_INTERVAL)
@@ -131,7 +130,6 @@ def save_user_email():
         print(f"Extracted email: {user_email}")
         
         if user_email:
-            # Add the email and the current timestamp (timezone-aware) to the queue
             email_queue.put({"email": user_email, "timestamp": datetime.now(timezone.utc)})
             return jsonify({"message": "User email saved successfully"}), 200
         else:
